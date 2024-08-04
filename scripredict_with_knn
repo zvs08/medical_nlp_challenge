@@ -1,0 +1,76 @@
+import pandas as pd
+import numpy as np
+from transformers import AutoTokenizer, AutoModelForSequenceClassification
+from sklearn.neighbors import KNeighborsClassifier
+from utils import get_logits
+
+# Load the filtered data
+filtered_df = pd.read_csv('data/filtered.csv')
+
+# Initialize the tokenizer
+tokenizer = AutoTokenizer.from_pretrained('UFNLP/gatortronS')
+
+# Load the trained models
+model_cancer = AutoModelForSequenceClassification.from_pretrained('./results/cancer_model')
+model_diabetes = AutoModelForSequenceClassification.from_pretrained('./results/diabetes_model')
+
+model_cancer.eval()
+model_diabetes.eval()
+
+# Collect logits for the entire dataset
+logits_list = []
+labels_list = []
+is_labeled_list = []
+
+for i in range(len(filtered_df)):
+    text = filtered_df.iloc[i]['text']
+    logits_cancer = get_logits([text], model_cancer, tokenizer)
+    logits_diabetes = get_logits([text], model_diabetes, tokenizer)
+    logits_combined = np.concatenate((logits_cancer.squeeze(0).numpy(), logits_diabetes.squeeze(0).numpy()))
+    logits_list.append(logits_combined)
+    
+    has_cancer = filtered_df.iloc[i]['has_cancer']
+    has_diabetes = filtered_df.iloc[i]['has_diabetes']
+    
+    # Determine if the sample is labeled or not
+    is_labeled = not pd.isnull(has_cancer) and not pd.isnull(has_diabetes)
+    is_labeled_list.append(is_labeled)
+    
+    # Store the labels if the sample is labeled, otherwise store NaNs
+    if is_labeled:
+        labels_list.append((has_cancer, has_diabetes))
+    else:
+        labels_list.append((np.nan, np.nan))
+
+# Convert lists to numpy arrays
+logits_array = np.array(logits_list)
+labels_array = np.array(labels_list)
+is_labeled_array = np.array(is_labeled_list)
+
+# Separate labeled and unlabeled data
+labeled_indices = np.where(is_labeled_array)[0]
+unlabeled_indices = np.where(~is_labeled_array)[0]
+
+labeled_logits = logits_array[labeled_indices]
+labeled_labels = labels_array[labeled_indices]
+
+unlabeled_logits = logits_array[unlabeled_indices]
+
+# Train a KNN model for each task (cancer and diabetes)
+knn_cancer = KNeighborsClassifier(n_neighbors=5)
+knn_diabetes = KNeighborsClassifier(n_neighbors=5)
+
+# Use only the labeled data for training
+knn_cancer.fit(labeled_logits, labeled_labels[:, 0])
+knn_diabetes.fit(labeled_logits, labeled_labels[:, 1])
+
+# Predict the labels for the unlabeled data
+cancer_predictions = knn_cancer.predict(unlabeled_logits)
+diabetes_predictions = knn_diabetes.predict(unlabeled_logits)
+
+# Combine predictions with the original dataframe
+filtered_df.loc[unlabeled_indices, 'has_cancer'] = cancer_predictions
+filtered_df.loc[unlabeled_indices, 'has_diabetes'] = diabetes_predictions
+
+# Display the updated dataframe with predictions
+print(filtered_df.head())
