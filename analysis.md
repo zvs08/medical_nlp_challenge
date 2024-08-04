@@ -53,4 +53,4 @@ Given the constraints with the labeled data:
 
 ## Conclusion
 
-This project demonstrated a method to predict diabetes and cancer from clinical notes using BERT and KNN. Despite the constraints posed by the limited labeled data, the approach was effective given the circumstances and provided a foundation for further improvements.
+This project demonstrated a method to predict diabetes and cancer from clinical notes using BERT and KNN. Due to the constraints posed by the limited labeled data, we implemented approach of fine-tuning pre-trained encoder model on this small subset of labelled data and use the final pooler layer as as input for the next ML algortihm rather than final predictions from the model itself.
