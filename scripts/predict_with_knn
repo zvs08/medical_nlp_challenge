@@ -69,8 +69,8 @@ cancer_predictions = knn_cancer.predict(unlabeled_logits)
 diabetes_predictions = knn_diabetes.predict(unlabeled_logits)
 
 # Combine predictions with the original dataframe
-filtered_df.loc[unlabeled_indices, 'has_cancer'] = cancer_predictions
-filtered_df.loc[unlabeled_indices, 'has_diabetes'] = diabetes_predictions
+filtered_df.loc[unlabeled_indices, 'pred_has_cancer'] = cancer_predictions
+filtered_df.loc[unlabeled_indices, 'pred_has_diabetes'] = diabetes_predictions
 
 # Display the updated dataframe with predictions
 print(filtered_df.head())
