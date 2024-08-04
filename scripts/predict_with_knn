@@ -5,7 +5,7 @@ from sklearn.neighbors import KNeighborsClassifier
 from utils import get_logits
 
 # Load the filtered data
-filtered_df = pd.read_csv('data/filtered.csv')
+filtered_df = pd.read_csv('data/data-train.csv')
 
 # Initialize the tokenizer
 tokenizer = AutoTokenizer.from_pretrained('UFNLP/gatortronS')
