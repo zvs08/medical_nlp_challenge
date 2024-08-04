@@ -17,20 +17,20 @@ This repository contains code for predicting diabetes and cancer from clinical n
 
 
 ## Scripts 
-
+```bash
 1. Load and Preprocess Data
 
   This script loads and preprocesses the data.
-  ```bash
+  
   python scripts/load_and_preprocess.py
 
 
 2.Train Models
   This script trains two separate models for cancer and diabetes prediction.
-  ```bash
+
   python scripts/train_models.py
 
 3. Predict with KNN
   This script uses the trained models to extract logits and then applies KNN for final prediction on the unlabeled data.
-  ```bash
+
   python scripts/predict_with_knn.py 
