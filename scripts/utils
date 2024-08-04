@@ -47,6 +47,6 @@ def get_logits(texts, model, tokenizer):
     inputs = {'input_ids': encodings['input_ids'], 'attention_mask': encodings['attention_mask']}
     
     with torch.no_grad():
-        outputs = model(**inputs)
-        logits = outputs['logits']
+        outputs = model.bert(**inputs)
+        logits = outputs.pooler_output
     return logits
