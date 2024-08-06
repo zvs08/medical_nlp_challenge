@@ -4,73 +4,65 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification
 from sklearn.neighbors import KNeighborsClassifier
 from utils import get_logits
 
-# Load the filtered data
-filtered_df = pd.read_csv('data/data-train.csv')
+df = pd.read_csv('data/data.csv')
 
 # Initialize the tokenizer
 tokenizer = AutoTokenizer.from_pretrained('UFNLP/gatortronS')
-
-# Load the trained models
-model_cancer = AutoModelForSequenceClassification.from_pretrained('./results/cancer_model')
-model_diabetes = AutoModelForSequenceClassification.from_pretrained('./results/diabetes_model')
-
-model_cancer.eval()
-model_diabetes.eval()
-
-# Collect logits for the entire dataset
-logits_list = []
-labels_list = []
-is_labeled_list = []
-
-for i in range(len(filtered_df)):
-    text = filtered_df.iloc[i]['text']
-    logits_cancer = get_logits([text], model_cancer, tokenizer)
-    logits_diabetes = get_logits([text], model_diabetes, tokenizer)
-    logits_combined = np.concatenate((logits_cancer.squeeze(0).numpy(), logits_diabetes.squeeze(0).numpy()))
-    logits_list.append(logits_combined)
+for target in ['cancer', 'diabetes']:
+    # Load the trained models
+    model = AutoModelForSequenceClassification.from_pretrained('./results/' + target + '_model')
+    model.eval()
     
-    has_cancer = filtered_df.iloc[i]['has_cancer']
-    has_diabetes = filtered_df.iloc[i]['has_diabetes']
+    # Define a function to encode text
+    def encode_texts(texts, tokenizer, max_len=512):
+        encodings = tokenizer.batch_encode_plus(
+            texts,
+            add_special_tokens=True,
+            max_length=max_len,
+            padding='max_length',
+            return_token_type_ids=False,
+            return_attention_mask=True,
+            truncation=True,
+            return_tensors='pt'
+        )
+        return encodings
     
-    # Determine if the sample is labeled or not
-    is_labeled = not pd.isnull(has_cancer) and not pd.isnull(has_diabetes)
-    is_labeled_list.append(is_labeled)
+    def get_logits(texts, model_checkpoint):
+        encodings = encode_texts(texts, tokenizer)
+        inputs = {'input_ids': encodings['input_ids'], 'attention_mask': encodings['attention_mask']}
     
-    # Store the labels if the sample is labeled, otherwise store NaNs
-    if is_labeled:
-        labels_list.append((has_cancer, has_diabetes))
-    else:
-        labels_list.append((np.nan, np.nan))
+        with torch.no_grad():
+            outputs = model_checkpoint.bert(**inputs)
+            logits = outputs.pooler_output
+        return logits
+    
+    # Collect logits for the entire dataset in batches
+    batch_size = 16  # Adjust the batch size based on your memory capacity
+    logits_list = []
+    label = []
+    is_labeled_list = []
+    
+    for start_idx in tqdm(range(0, len(df), batch_size)):
+        end_idx = min(start_idx + batch_size, len(df))
+        texts = df.iloc[start_idx:end_idx]['text'].tolist()
+        logits = get_logits(texts, model)
+        logits_list.append(logits.numpy())
 
-# Convert lists to numpy arrays
-logits_array = np.array(logits_list)
-labels_array = np.array(labels_list)
-is_labeled_array = np.array(is_labeled_list)
-
-# Separate labeled and unlabeled data
-labeled_indices = np.where(is_labeled_array)[0]
-unlabeled_indices = np.where(~is_labeled_array)[0]
-
-labeled_logits = logits_array[labeled_indices]
-labeled_labels = labels_array[labeled_indices]
-
-unlabeled_logits = logits_array[unlabeled_indices]
-
-# Train a KNN model for each task (cancer and diabetes)
-knn_cancer = KNeighborsClassifier(n_neighbors=5)
-knn_diabetes = KNeighborsClassifier(n_neighbors=5)
-
-# Use only the labeled data for training
-knn_cancer.fit(labeled_logits, labeled_labels[:, 0])
-knn_diabetes.fit(labeled_logits, labeled_labels[:, 1])
-
-# Predict the labels for the unlabeled data
-cancer_predictions = knn_cancer.predict(unlabeled_logits)
-diabetes_predictions = knn_diabetes.predict(unlabeled_logits)
-
-# Combine predictions with the original dataframe
-filtered_df.loc[unlabeled_indices, 'pred_has_cancer'] = cancer_predictions
-filtered_df.loc[unlabeled_indices, 'pred_has_diabetes'] = diabetes_predictions
-
-# Display the updated dataframe with predictions
-print(filtered_df.head())
+    logits_array = np.vstack(logits_list)
+    
+    label = np.array(df['has_' + target])
+    is_labeled = pd.notna(df['has_' + target])
+    labeled_logits = logits_array[is_labeled]
+    unlabeled_logits = logits_array[~is_labeled]
+    
+    knn = KNeighborsClassifier(n_neighbors=5)
+    
+    # Use only the labeled data for training
+    knn.fit(labeled_logits, label[is_labeled])
+    
+    # Predict the labels for the unlabeled data
+    predictions = knn.predict(unlabeled_logits)
+    df['pred_has_' + target] = None
+    # Combine predictions with the original dataframe
+    df.loc[~is_labeled, 'pred_has_' + target] = predictions
+df.to_csv('data/data_res.csv', index=False)
